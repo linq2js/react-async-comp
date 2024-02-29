@@ -27,7 +27,7 @@ type RACContext = {
   readonly error?: any;
   setResult(type: "promise" | "data" | "error", value: unknown): void;
   dispose(): void;
-  reload(): void;
+  revalidate(): void;
   subscribe(listener: VoidFunction): VoidFunction;
 };
 
@@ -40,7 +40,7 @@ export type RACOptions = {
 let allRACContexts = new WeakMap<any, Map<string, RACContext>>();
 
 export type LoaderContext = {
-  reload(): void;
+  revalidate(): void;
   use<T>(store: Store<T>, equal?: Equal<T>): T;
   use<T>(
     getState: () => T,
@@ -50,8 +50,8 @@ export type LoaderContext = {
 };
 
 export type RenderContext<TData> = {
-  reload(): void;
-  reloadAll(): void;
+  revalidate(): void;
+  revalidateAll(): void;
   data: TData;
 };
 
@@ -68,7 +68,7 @@ export type Store<TState> = {
 
 export type RAC<TProps> = FunctionComponent<TProps> & {
   dispose(): void;
-  reload(): void;
+  revalidate(): void;
 };
 
 export type CreateRAC = {
@@ -124,14 +124,14 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     }, [context, rerender]);
 
     if (render) {
-      const reload = useCallback(() => {
+      const revalidate = useCallback(() => {
         context.dispose();
         rerender();
       }, [context]);
 
       return render(props, {
-        reload,
-        reloadAll: context.reload,
+        revalidate,
+        revalidateAll: context.revalidate,
         data: context.data,
       });
     }
@@ -154,7 +154,7 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
 
       try {
         const result = loader(props, {
-          reload: context.reload,
+          revalidate: context.revalidate,
           get(...args: any[]) {
             let getState: AnyFunc;
             let subscribe: AnyFunc;
@@ -175,7 +175,7 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
               subscribe(() => {
                 const next = getState();
                 if (equal(next, current)) return;
-                context?.reload();
+                context?.revalidate();
               })
             );
 
@@ -202,10 +202,11 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     dispose() {
       const items = allRACContexts.get(contextKey);
       items?.forEach((item) => item.dispose());
+      allRACContexts.delete(contextKey);
     },
-    reload() {
+    revalidate() {
       const items = allRACContexts.get(contextKey);
-      items?.forEach((item) => item.reload());
+      items?.forEach((item) => item.revalidate());
     },
   });
 };
@@ -300,7 +301,7 @@ const createContext = (
       }
     },
     dispose: remove,
-    reload() {
+    revalidate() {
       remove();
       invokeAndClear(listeners);
     },
