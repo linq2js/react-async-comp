@@ -40,7 +40,7 @@ describe("rac", () => {
       (_, { data }) => {
         return <div>{data.value}</div>;
       },
-      { stale: "unused" }
+      { dispose: "unused" }
     );
     const node = (
       <Suspense fallback={LOADING}>

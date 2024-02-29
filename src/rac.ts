@@ -7,8 +7,9 @@ import {
   useLayoutEffect,
   useState,
 } from "react";
-import { AnyFunc, Equal } from "./types";
+import { AnyFunc, Equal, NoInfer } from "./types";
 import { isPlainObject, isPromiseLike } from "./utils";
+import { createListenable } from "./listenable";
 
 export type RACPropsBase = Record<string, RACPropType>;
 
@@ -27,26 +28,23 @@ type RACContext = {
   readonly error?: any;
   setResult(type: "promise" | "data" | "error", value: unknown): void;
   dispose(): void;
-  revalidate(): void;
+  revalidateAll(): void;
+  onResolved(listener: VoidFunction): void;
   subscribe(listener: VoidFunction): VoidFunction;
 };
 
-export type StaleOption = "never" | "unused";
+export type DisposeOption = "never" | "unused";
 
 export type RACOptions = {
-  stale?: StaleOption;
+  dispose?: DisposeOption;
 };
 
 let allRACContexts = new WeakMap<any, Map<string, RACContext>>();
 
 export type LoaderContext = {
-  revalidate(): void;
-  use<T>(store: Store<T>, equal?: Equal<T>): T;
-  use<T>(
-    getState: () => T,
-    subscribe: (listener: VoidFunction) => VoidFunction,
-    equal?: Equal<T>
-  ): T;
+  revalidateAll(): void;
+  use<T>(store: Store<T>, equal?: NoInfer<Equal<T>>): T;
+  use(channel: Channel): void;
 };
 
 export type RenderContext<TData> = {
@@ -68,7 +66,7 @@ export type Store<TState> = {
 
 export type RAC<TProps> = FunctionComponent<TProps> & {
   dispose(): void;
-  revalidate(): void;
+  revalidateAll(): void;
 };
 
 export type CreateRAC = {
@@ -90,10 +88,12 @@ export type CreateRAC = {
   ): RAC<TProps>;
 };
 
+const globalOnRevalidate = createListenable<string[]>();
+
 export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
   let render: AnyFunc | undefined;
   let options: RACOptions | undefined;
-  const unsubscribeExternalStores = new Set<VoidFunction>();
+  const onCleanup = createListenable();
   let shouldSerialize = true;
 
   if (typeof args[0] === "function") {
@@ -102,7 +102,7 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     [options] = args;
   }
 
-  const { stale = "unused" } = options || {};
+  const { dispose = "unused" } = options || {};
   const contextKey = loader;
 
   const fc = (props: any): any => {
@@ -129,11 +129,13 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
         rerender();
       }, [context]);
 
-      return render(props, {
+      const renderContext: RenderContext<any> = {
         revalidate,
-        revalidateAll: context.revalidate,
+        revalidateAll: context.revalidateAll,
         data: context.data,
-      });
+      };
+
+      return render(props, renderContext);
     }
 
     return context.data;
@@ -148,40 +150,52 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     const propsKey = shouldSerialize ? serializeProps(props) : "";
     let context = items.get(propsKey);
     if (!context) {
-      context = createContext(contextKey, propsKey, stale, () => {
-        invokeAndClear(unsubscribeExternalStores);
-      });
+      context = createContext(
+        contextKey,
+        propsKey,
+        dispose,
+        onCleanup.notifyAndClear
+      );
 
       try {
-        const result = loader(props, {
-          revalidate: context.revalidate,
-          get(...args: any[]) {
-            let getState: AnyFunc;
-            let subscribe: AnyFunc;
-            let equal: AnyFunc;
+        const loaderContext: LoaderContext = {
+          revalidateAll: context.revalidateAll,
+          use(
+            storeOrChannel: Store<any> | AnyFunc,
+            equal: AnyFunc = Object.is
+          ) {
+            // is channel
+            if (typeof storeOrChannel === "function") {
+              const channel = storeOrChannel;
 
-            if (typeof args[0] === "function") {
-              [getState, subscribe, equal = Object.is] = args;
+              context?.onResolved(() => {
+                const unsubscribe = channel(() => {
+                  context?.revalidateAll();
+                });
+                if (typeof unsubscribe === "function") {
+                  onCleanup.subscribe(unsubscribe);
+                }
+              });
             } else {
-              [getState, subscribe, equal = Object.is] = [
-                args[0].getState,
-                args[0].subscribe,
-                args[1],
-              ];
+              // is store
+              const store = storeOrChannel;
+              let current = store.getState();
+
+              context?.onResolved(() => {
+                onCleanup.subscribe(
+                  store.subscribe(() => {
+                    const next = store.getState();
+                    if (equal(next, current)) return;
+                    context?.revalidateAll();
+                  })
+                );
+              });
+
+              return current;
             }
-
-            let current = getState();
-            unsubscribeExternalStores.add(
-              subscribe(() => {
-                const next = getState();
-                if (equal(next, current)) return;
-                context?.revalidate();
-              })
-            );
-
-            return current;
           },
-        });
+        };
+        const result = loader(props, loaderContext);
 
         if (isPromiseLike(result)) {
           context.setResult("promise", result);
@@ -204,9 +218,9 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
       items?.forEach((item) => item.dispose());
       allRACContexts.delete(contextKey);
     },
-    revalidate() {
+    revalidateAll() {
       const items = allRACContexts.get(contextKey);
-      items?.forEach((item) => item.revalidate());
+      items?.forEach((item) => item.revalidateAll());
     },
   });
 };
@@ -223,16 +237,10 @@ export const select = <TState, TResult>(
   };
 };
 
-const invokeAndClear = (listeners: Set<VoidFunction>) => {
-  const copy = Array.from(listeners);
-  listeners.clear();
-  copy.forEach((listener) => listener());
-};
-
 const createContext = (
   contextKey: AnyFunc,
   key: string,
-  stale: StaleOption,
+  disposeWhen: DisposeOption,
   cleanup: VoidFunction
 ) => {
   let data: any;
@@ -240,8 +248,21 @@ const createContext = (
   let result: Promise<any> | undefined;
   let loading = false;
   let context: RACContext;
-  let cleanupTimerId: any;
-  const listeners = new Set<VoidFunction>();
+  let autoDisposeTimerId: any;
+  const onResolved = createListenable();
+  const onRevalidate = createListenable({
+    onSubscribe() {
+      clearTimeout(autoDisposeTimerId);
+    },
+    onUnsubscribe() {
+      if (disposeWhen === "unused") {
+        if (!onRevalidate.size) {
+          remove();
+        }
+      }
+    },
+  });
+
   const remove = () => {
     const items = allRACContexts.get(contextKey);
 
@@ -271,10 +292,12 @@ const createContext = (
     get loading() {
       return loading;
     },
+    onResolved: onResolved.subscribe,
     setResult(type, value) {
       if (type === "data") {
         result = Promise.resolve(value);
         data = value;
+        onResolved.notifyAndClear();
       } else if (type === "error") {
         result = Promise.reject(error);
         error = value;
@@ -287,39 +310,26 @@ const createContext = (
             (resolved) => {
               data = resolved;
               loading = false;
+              onResolved.notifyAndClear();
             },
-            (rejectd) => {
-              error = rejectd;
+            (rejected) => {
+              error = rejected;
               loading = false;
             }
           )
           .finally(() => {
-            if (stale === "unused") {
-              cleanupTimerId = setTimeout(remove, 100);
+            if (disposeWhen === "unused") {
+              autoDisposeTimerId = setTimeout(remove, 100);
             }
           });
       }
     },
     dispose: remove,
-    revalidate() {
+    revalidateAll() {
       remove();
-      invokeAndClear(listeners);
+      onRevalidate.notifyAndClear();
     },
-    subscribe(listener) {
-      clearTimeout(cleanupTimerId);
-      listeners.add(listener);
-      let active = true;
-      return () => {
-        if (!active) return;
-        active = false;
-        listeners.delete(listener);
-        if (stale === "unused") {
-          if (!listeners.size) {
-            remove();
-          }
-        }
-      };
-    },
+    subscribe: onRevalidate.subscribe,
   };
 
   return context;
@@ -371,4 +381,53 @@ export const serializeProps = (props: RACPropsBase) => {
 
 export const cleanup = () => {
   allRACContexts = new WeakMap();
+  globalOnRevalidate.clear();
+};
+
+export type Channel = (emit: VoidFunction) => void | VoidFunction;
+
+export type TagFn = {
+  (tag: string): Channel;
+  (tags: string[]): Channel;
+  (filter: (tag: string) => boolean): Channel;
+};
+
+export const tag: TagFn = (input) => {
+  let matcher: AnyFunc;
+  if (typeof input === "function") {
+    matcher = input;
+  } else if (Array.isArray(input)) {
+    const inputTags = input;
+    matcher = (tag: string) => inputTags.includes(tag);
+  } else {
+    matcher = (tag) => tag === input;
+  }
+
+  return (emit) => {
+    return globalOnRevalidate.subscribe((tags) => {
+      if (tags.some(matcher)) {
+        emit();
+      }
+    });
+  };
+};
+
+export type RevalidateFn = {
+  (tag: string): void;
+
+  (tags: string[]): void;
+};
+
+export const revalidate: RevalidateFn = (tags) => {
+  globalOnRevalidate.notify(Array.isArray(tags) ? tags : [tags]);
+};
+
+export const timeout = (ms: number): Channel => {
+  return (emit) => {
+    const timeoutId = setTimeout(emit, ms);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  };
 };
