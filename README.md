@@ -106,18 +106,18 @@ const TodoList = rac(
 
 By default, RAC automatically disposes of fetched data if it is no longer used by any components.
 
-```js
+```jsx
 const App = () => {
   const [show, setShow] = useState(true);
 
   return (
     <>
       <button onClick={() => setShow(!show))>Toggle todo list</button>
-      <ErrorBoundary fallback={<div>Something went wrong</div>}>
+      {show && <ErrorBoundary fallback={<div>Something went wrong</div>}>
         <Suspense fallback={<div>Loading...</div>}>
           <TodoList />
         </Suspense>
-      </ErrorBoundary>
+      </ErrorBoundary>}
     </>
   );
 };

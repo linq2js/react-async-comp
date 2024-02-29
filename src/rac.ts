@@ -4,7 +4,7 @@ import {
   isValidElement,
   memo,
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
 import { AnyFunc, Equal } from "./types";
@@ -119,7 +119,7 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     const setState = useState({})[1];
     const rerender = useCallback(() => setState({}), [setState]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
       return context.subscribe(rerender);
     }, [context, rerender]);
 
