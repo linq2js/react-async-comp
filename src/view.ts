@@ -6,10 +6,10 @@ import {
   View,
   ViewOptions,
   ViewPropsBase,
-  SerializableProps,
+  Serializable,
   Store,
 } from "./types";
-import { createCache, getCache, removeCache, getKey } from "./cache";
+import { createCache, getCacheGroup, removeCache, getKey, from } from "./cache";
 
 export type ViewFn = {
   <TProps extends ViewPropsBase = {}>(
@@ -20,11 +20,7 @@ export type ViewFn = {
     options?: ViewOptions
   ): View<TProps, ReactNode>;
 
-  <
-    TData,
-    TProps extends {},
-    TSerializableProps extends SerializableProps<TProps>
-  >(
+  <TData, TProps extends {}, TSerializableProps extends Serializable<TProps>>(
     loader: (
       props: TSerializableProps,
       context: LoaderContext
@@ -47,7 +43,7 @@ export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
   const { dispose = "unused" } = options || {};
   const cacheKey = loader;
 
-  const use = (props: any, render?: AnyFunc) => {
+  const use = (props: any) => {
     const { children: _children, ...serializableProps } = props;
     const cache = load(serializableProps);
     if (cache.loading) {
@@ -65,25 +61,25 @@ export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
       return cache.onUpdate(rerender);
     }, [cache, rerender]);
 
-    if (render) {
-      const renderContext: RenderContext<any> = {
-        revalidate: cache.revalidate,
-        data: cache.data,
-        set: cache.set,
-      };
-
-      return render(props, renderContext);
-    }
-
-    return cache.data;
+    return cache;
   };
 
   const fc = (props: any): any => {
-    return use(props, render);
+    const cache = use(props);
+
+    if (!render) return cache.data;
+
+    const renderContext: RenderContext<any> = {
+      revalidate: cache.revalidate,
+      data: cache.data,
+      set: cache.set,
+    };
+
+    return render(props, renderContext);
   };
 
   const load = (props: any) => {
-    const items = getCache(cacheKey);
+    const items = getCacheGroup(cacheKey);
     const propsKey = getKey(props);
     let cache = items.get(propsKey);
 
@@ -96,23 +92,15 @@ export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
   };
 
   return Object.assign(memo(fc), {
+    ...from(loader),
     clear() {
       removeCache(cacheKey, (item) => item.dispose());
     },
     revalidate() {
-      getCache(cacheKey).forEach((item) => item.revalidate());
-    },
-    get(props: any) {
-      return load(props).get();
+      getCacheGroup(cacheKey).forEach((item) => item.revalidate());
     },
     use(props: any) {
-      return use(props);
-    },
-    set(value: any, props: any = {}) {
-      const cache = getCache(cacheKey).get(getKey(props));
-      if (!cache) return false;
-      cache.set(value);
-      return true;
+      return use(props).data;
     },
   });
 };

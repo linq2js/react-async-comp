@@ -1,6 +1,12 @@
 import { isValidElement } from "react";
 import { createListenable } from "./listenable";
-import { AnyFunc, DisposeOption, LoaderContext, Store } from "./types";
+import {
+  AnyFunc,
+  DisposeOption,
+  DynamicCache,
+  LoaderContext,
+  Store,
+} from "./types";
 import { isPlainObject, isPromiseLike } from "./utils";
 
 type Cache = {
@@ -213,7 +219,7 @@ export const createCache = (
   return cache;
 };
 
-export const getCache = (key: AnyFunc) => {
+export const getCacheGroup = (key: AnyFunc) => {
   let items = allCache.get(key);
 
   if (!items) {
@@ -224,12 +230,18 @@ export const getCache = (key: AnyFunc) => {
   return items;
 };
 
-export const removeCache = (key: AnyFunc, callback?: (item: Cache) => void) => {
+export const removeCache = (
+  loader: AnyFunc,
+  callback?: (item: Cache) => void
+) => {
   if (callback) {
-    const items = allCache.get(key);
-    items?.forEach(callback);
+    const items = allCache.get(loader);
+    if (items) {
+      items.forEach(callback);
+      items.clear();
+    }
   } else {
-    allCache.delete(key);
+    allCache.delete(loader);
   }
 };
 
@@ -238,11 +250,11 @@ export const clearCache = () => {
 };
 
 export const from = <TData, TProps extends {} | void = {}>(
-  loader: (payload: TProps) => TData
-) => {
+  loader: (payload: TProps) => TData | Promise<TData>
+): DynamicCache<TData, TProps> => {
   return {
-    load(props: {} extends TProps ? void : TProps) {
-      const items = getCache(loader);
+    load(props) {
+      const items = getCacheGroup(loader);
       const propsKey = getKey(props);
       let cache = items.get(propsKey);
       if (!cache) {
@@ -252,14 +264,11 @@ export const from = <TData, TProps extends {} | void = {}>(
 
       return cache.get();
     },
-    get(props: {} extends TProps ? void : TProps) {
-      return getCache(loader).get(getKey(props));
+    get(props) {
+      return getCacheGroup(loader).get(getKey(props))?.get();
     },
-    set(
-      value: TData | ((prev: TData) => TData),
-      props: {} extends TProps ? void : TProps
-    ) {
-      getCache(loader).get(getKey(props))?.set(value);
+    set(value, props) {
+      getCacheGroup(loader).get(getKey(props))?.set(value);
     },
   };
 };
