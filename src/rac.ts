@@ -1,11 +1,4 @@
-import {
-  ReactNode,
-  isValidElement,
-  memo,
-  useCallback,
-  useLayoutEffect,
-  useState,
-} from "react";
+import { ReactNode, memo, useCallback, useLayoutEffect, useState } from "react";
 import {
   AnyFunc,
   LoaderContext,
@@ -16,9 +9,7 @@ import {
   SerializableProps,
   Store,
 } from "./types";
-import { isPlainObject, isPromiseLike } from "./utils";
-import { createListenable } from "./listenable";
-import { createCache, getCache, removeCache } from "./cache";
+import { createCache, getCache, removeCache, getKey } from "./cache";
 
 export type CreateRAC = {
   <TProps extends RACPropsBase = {}>(
@@ -46,8 +37,6 @@ export type CreateRAC = {
 export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
   let render: AnyFunc | undefined;
   let options: RACOptions | undefined;
-  const onCleanup = createListenable();
-  let shouldSerialize = true;
 
   if (typeof args[0] === "function") {
     [render, options] = args;
@@ -62,7 +51,7 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     const { children: _children, ...serializableProps } = props;
     const cache = load(serializableProps);
     if (cache.loading) {
-      throw cache.result;
+      throw cache.get();
     }
 
     if (cache.error) {
@@ -73,7 +62,7 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     const rerender = useCallback(() => setState({}), [setState]);
 
     useLayoutEffect(() => {
-      return cache.subscribe(rerender);
+      return cache.onUpdate(rerender);
     }, [cache, rerender]);
 
     if (render) {
@@ -100,65 +89,11 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
 
   const load = (props: any) => {
     const items = getCache(cacheKey);
-    const propsKey = shouldSerialize ? serializeProps(props) : "";
+    const propsKey = getKey(props);
     let cache = items.get(propsKey);
+
     if (!cache) {
-      const [newCache, updateCache] = createCache(
-        cacheKey,
-        propsKey,
-        dispose,
-        onCleanup.notifyAndClear
-      );
-
-      cache = newCache;
-
-      try {
-        const loaderContext: LoaderContext = {
-          revalidateAll: cache.revalidateAll,
-          use(storeOrEffect: Store<any> | AnyFunc, equal: AnyFunc = Object.is) {
-            // is effect
-            if (typeof storeOrEffect === "function") {
-              const effect = storeOrEffect;
-
-              cache?.onReady(() => {
-                const emit = () => {
-                  cache?.revalidateAll();
-                };
-                const unsubscribe = effect(emit);
-                if (typeof unsubscribe === "function") {
-                  onCleanup.subscribe(unsubscribe);
-                }
-              });
-            } else {
-              // is store
-              const store = storeOrEffect;
-              let current = store.getState();
-
-              cache?.onReady(() => {
-                onCleanup.subscribe(
-                  store.subscribe(() => {
-                    const next = store.getState();
-                    if (equal(next, current)) return;
-                    cache?.revalidateAll();
-                  })
-                );
-              });
-
-              return current;
-            }
-          },
-        };
-        const result = loader(props, loaderContext);
-
-        if (isPromiseLike(result)) {
-          updateCache("promise", result);
-        } else {
-          updateCache("data", result);
-        }
-      } catch (error) {
-        updateCache("error", error);
-      }
-
+      cache = createCache(cacheKey, props, dispose);
       items.set(propsKey, cache);
     }
 
@@ -173,16 +108,15 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
       getCache(cacheKey).forEach((item) => item.revalidateAll());
     },
     get(props: any) {
-      return load(props).result;
+      return load(props).get();
     },
     use(props: any) {
       return use(props);
     },
     set(value: any, props: any = {}) {
-      const propsKey = serializeProps(props);
-      const cache = getCache(cacheKey).get(propsKey);
+      const cache = getCache(cacheKey).get(getKey(props));
       if (!cache) return false;
-      cache.update(value);
+      cache.set(value);
       return true;
     },
   });
@@ -196,66 +130,6 @@ export const select = <TState, TResult>(
     ...from,
     getState() {
       return selector(from.getState());
-    },
-  };
-};
-
-const serializeProps = (props: any = {}) => {
-  const serialize = (value: unknown): string => {
-    if (!value) {
-      if (typeof value === "undefined") {
-        return "#U";
-      }
-      if (value === null) {
-        return "#N";
-      }
-      if (value === "") {
-        return "#E";
-      }
-      return String(value);
-    }
-
-    if (value instanceof Date) {
-      return `D:${value.getTime()}`;
-    }
-
-    if (value instanceof RegExp) {
-      return `R:${value}`;
-    }
-
-    if (Array.isArray(value)) {
-      return value.map(serialize).join(",");
-    }
-
-    if (typeof value === "object") {
-      if (isPlainObject(value) && !isValidElement(value)) {
-        return Object.keys(value)
-          .sort()
-          .map((key) => `${JSON.stringify(key)}:${serialize(value[key])}`)
-          .join(",");
-      }
-
-      return "#I";
-    }
-
-    return JSON.stringify(value);
-  };
-
-  return serialize(props);
-};
-
-export const from = <TData, TProps extends RACPropsBase | void = void>(
-  loader: (payload: TProps) => TData
-) => {
-  return {
-    get(props: TProps) {
-      return getCache(loader).get(serializeProps(props))?.result;
-    },
-    set(
-      value: TData | ((prev: TData) => TData),
-      props: {} extends TProps ? void : TProps
-    ) {
-      getCache(loader).get(serializeProps(props))?.update(value);
     },
   };
 };
