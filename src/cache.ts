@@ -39,7 +39,8 @@ export const createCache = (
     onUnsubscribe() {
       if (disposeWhen === "unused") {
         if (!onChange.size) {
-          remove();
+          clearTimeout(autoDisposeTimerId);
+          autoDisposeTimerId = setTimeout(remove, 0);
         }
       }
     },

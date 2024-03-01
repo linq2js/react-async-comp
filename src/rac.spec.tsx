@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { rac } from "./rac";
-import { Suspense } from "react";
+import { StrictMode, Suspense } from "react";
 import { delay } from "./utils";
 import { clearEffects, revalidate, tag } from "./effect";
 import { clearCache } from "./cache";
@@ -147,7 +147,11 @@ describe("rac", () => {
       () => 1,
       (_props, { data }) => <div>{data}</div>
     );
-    const { getByText } = render(<R1 />);
+    const { getByText } = render(
+      <StrictMode>
+        <R1 />
+      </StrictMode>
+    );
 
     getByText("1");
 
