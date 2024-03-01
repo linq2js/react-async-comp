@@ -4,31 +4,39 @@ export const createListenable = <T = void>(
     onUnsubscribe?: VoidFunction;
   } = {}
 ) => {
-  const listeners = new Set<(args: T) => void>();
+  type Listener = (args: T) => void;
+
+  const listeners: Listener[] = [];
 
   return {
     get size() {
-      return listeners.size;
+      return listeners.length;
     },
     clear() {
-      listeners.clear();
+      listeners.splice(0, listeners.length);
     },
     notify(args: T) {
-      listeners.forEach((listener) => listener(args));
+      listeners.slice().forEach((listener) => listener(args));
     },
     notifyAndClear(args: T) {
-      const copy = Array.from(listeners);
-      listeners.clear();
-      copy.forEach((listener) => listener(args));
+      listeners
+        .splice(0, listeners.length)
+        .forEach((listener) => listener(args));
     },
     subscribe(listener: (args: T) => void) {
       options.onSubscribe?.();
-      listeners.add(listener);
+
+      listeners.push(listener);
+
       let active = true;
+
       return () => {
         if (!active) return;
         active = false;
-        listeners.delete(listener);
+        const index = listeners.indexOf(listener);
+        if (index !== -1) {
+          listeners.splice(index, 1);
+        }
         options.onUnsubscribe?.();
       };
     },
