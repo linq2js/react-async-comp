@@ -47,14 +47,17 @@ export type Store<TState> = {
   subscribe(listener: VoidFunction): VoidFunction;
 };
 
-export type RAC<TProps, TData = TProps> = FunctionComponent<TProps> & {
+export type RAC<TProps, TData> = FunctionComponent<TProps> & {
   clear(): void;
   revalidateAll(): void;
   get(props: TProps): Promise<TData>;
   use(props: TProps): TData;
   set(
     reducer: (prev: TData) => TData,
-    props: {} extends TProps ? void : TProps
+    props: {} extends SerializableProps<TProps> ? void : TProps
   ): boolean;
-  set(value: TData, props: {} extends TProps ? void : TProps): boolean;
+  set(
+    value: TData,
+    props: {} extends SerializableProps<TProps> ? void : TProps
+  ): boolean;
 };

@@ -27,7 +27,7 @@ export type CreateRAC = {
       context: LoaderContext
     ) => ReactNode | Promise<ReactNode>,
     options?: RACOptions
-  ): RAC<TProps>;
+  ): RAC<TProps, ReactNode>;
 
   <
     TData,
