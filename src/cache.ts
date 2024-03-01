@@ -265,10 +265,11 @@ export const from = <TData, TProps extends {} | void = {}>(
 };
 
 const isNil = (value: any) => {
-  if (value === null) return false;
-  if (typeof value === "undefined") return false;
-  if (typeof value === "number" && isNaN(value)) return false;
-  return true;
+  return (
+    value === null ||
+    typeof value === "undefined" ||
+    (typeof value === "number" && isNaN(value))
+  );
 };
 
 const cachedKeys = new WeakMap<object, string>();
@@ -312,11 +313,22 @@ export const getKey = (props: any = {}) => {
 
     if (typeof value === "object") {
       if (isPlainObject(value) && !isValidElement(value)) {
-        return Object.keys(value)
+        const pairs: string[] = [];
+        const sortedKeys = Object.keys(value)
           .filter((key) => !isNil(value[key]))
-          .sort()
-          .map((key) => `${JSON.stringify(key)}:${serialize(value[key])}`)
-          .join(",");
+          .sort();
+
+        for (const key of sortedKeys) {
+          const valueStr = serialize(value[key]);
+          if (!valueStr) continue;
+          pairs.push(`${JSON.stringify(key)}:${valueStr}`);
+        }
+
+        if (!pairs.length) {
+          return "";
+        }
+
+        return `{${pairs.join(",")}}`;
       }
 
       return "#I";
@@ -326,6 +338,7 @@ export const getKey = (props: any = {}) => {
   };
 
   const key = serialize(props);
+
   if (canCache) {
     cachedKeys.set(props, key);
   }
