@@ -245,8 +245,19 @@ export const from = <TData, TProps extends {} | void = {}>(
   loader: (payload: TProps) => TData
 ) => {
   return {
-    get(props: TProps) {
-      return getCache(loader).get(getKey(props))?.get();
+    load(props: {} extends TProps ? void : TProps) {
+      const items = getCache(loader);
+      const propsKey = getKey(props);
+      let cache = items.get(propsKey);
+      if (!cache) {
+        cache = createCache(loader, props, "never");
+        items.set(propsKey, cache);
+      }
+
+      return cache.get();
+    },
+    get(props: {} extends TProps ? void : TProps) {
+      return getCache(loader).get(getKey(props));
     },
     set(
       value: TData | ((prev: TData) => TData),
