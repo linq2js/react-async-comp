@@ -68,6 +68,8 @@ describe("rac", () => {
 
     unmount();
 
+    await delay();
+
     const secondTry = render(node);
 
     secondTry.getByText("loading");
