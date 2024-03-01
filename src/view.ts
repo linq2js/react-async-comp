@@ -2,23 +2,23 @@ import { ReactNode, memo, useCallback, useLayoutEffect, useState } from "react";
 import {
   AnyFunc,
   LoaderContext,
-  RAC,
-  RACOptions,
-  RACPropsBase,
   RenderContext,
+  View,
+  ViewOptions,
+  ViewPropsBase,
   SerializableProps,
   Store,
 } from "./types";
 import { createCache, getCache, removeCache, getKey } from "./cache";
 
-export type CreateRAC = {
-  <TProps extends RACPropsBase = {}>(
+export type ViewFn = {
+  <TProps extends ViewPropsBase = {}>(
     render: (
       props: TProps,
       context: LoaderContext
     ) => ReactNode | Promise<ReactNode>,
-    options?: RACOptions
-  ): RAC<TProps, ReactNode>;
+    options?: ViewOptions
+  ): View<TProps, ReactNode>;
 
   <
     TData,
@@ -30,13 +30,13 @@ export type CreateRAC = {
       context: LoaderContext
     ) => TData | Promise<TData>,
     render: (props: TProps, context: RenderContext<TData>) => ReactNode,
-    options?: RACOptions
-  ): RAC<TProps, TData>;
+    options?: ViewOptions
+  ): View<TProps, TData>;
 };
 
-export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
+export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
   let render: AnyFunc | undefined;
-  let options: RACOptions | undefined;
+  let options: ViewOptions | undefined;
 
   if (typeof args[0] === "function") {
     [render, options] = args;
@@ -66,15 +66,10 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     }, [cache, rerender]);
 
     if (render) {
-      const revalidate = useCallback(() => {
-        cache.dispose();
-        rerender();
-      }, [cache]);
-
       const renderContext: RenderContext<any> = {
-        revalidate,
-        revalidateAll: cache.revalidateAll,
+        revalidate: cache.revalidate,
         data: cache.data,
+        set: cache.set,
       };
 
       return render(props, renderContext);
@@ -104,8 +99,8 @@ export const rac: CreateRAC = (loader: AnyFunc, ...args: any[]) => {
     clear() {
       removeCache(cacheKey, (item) => item.dispose());
     },
-    revalidateAll() {
-      getCache(cacheKey).forEach((item) => item.revalidateAll());
+    revalidate() {
+      getCache(cacheKey).forEach((item) => item.revalidate());
     },
     get(props: any) {
       return load(props).get();

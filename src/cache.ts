@@ -8,7 +8,7 @@ type Cache = {
   readonly loading: boolean;
   readonly error?: any;
   dispose(): void;
-  revalidateAll(): void;
+  revalidate(): void;
   onReady(listener: VoidFunction): void;
   onUpdate(listener: VoidFunction): VoidFunction;
   get(): Promise<any>;
@@ -140,7 +140,7 @@ export const createCache = (
     },
     onReady: onReady.subscribe,
     dispose: remove,
-    revalidateAll() {
+    revalidate() {
       remove();
       onChange.notifyAndClear();
     },
@@ -164,7 +164,7 @@ export const createCache = (
 
   try {
     const loaderContext: LoaderContext = {
-      revalidateAll: cache.revalidateAll,
+      revalidate: cache.revalidate,
       use(storeOrEffect: Store<any> | AnyFunc, equal: AnyFunc = Object.is) {
         // is effect
         if (typeof storeOrEffect === "function") {
@@ -172,7 +172,7 @@ export const createCache = (
 
           onReady.subscribe(() => {
             const emit = () => {
-              cache?.revalidateAll();
+              cache.revalidate();
             };
             const unsubscribe = effect(emit);
             if (typeof unsubscribe === "function") {
@@ -189,7 +189,7 @@ export const createCache = (
               store.subscribe(() => {
                 const next = store.getState();
                 if (equal(next, current)) return;
-                cache?.revalidateAll();
+                cache.revalidate();
               })
             );
           });

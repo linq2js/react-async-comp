@@ -23,9 +23,9 @@ yarn add react-async-comp
 ```jsx
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import { rac } from "react-async-comp";
+import { view } from "react-async-comp";
 
-const TodoList = rac(async () => {
+const TodoList = view(async () => {
   // fetching data
   const res = await fetch("https://jsonplaceholder.typicode.com/todos");
   const todos = await res.json();
@@ -66,14 +66,13 @@ In the example above, we can use asynchronous data fetching code alongside rende
 
 ### Using hook with RAC
 
-To use hooks with React Async Component, the `rac(loader, render)` overload must be utilized. The `render` function accepts component props and `RenderContext` as parameters. `RenderContext` consists of the following properties:
+To use hooks with React Async Component, the `view(loader, render)` overload must be utilized. The `render` function accepts component props and `RenderContext` as parameters. `RenderContext` consists of the following properties:
 
-- `revalidate`: Initiates a revalidation for only the current component.
-- `revalidateAll`: Triggers a revalidation for all instances of the component.
+- `revalidate`: Triggers a revalidation for all instances of the component.
 - `data`: Represents the data fetched by the `loader()` function.
 
 ```jsx
-const TodoList = rac(
+const TodoList = view(
   // loader function
   async () => {
     const res = await fetch("https://jsonplaceholder.typicode.com/todos");
@@ -82,7 +81,7 @@ const TodoList = rac(
     return todos;
   },
   // render function
-  (props, { data: todos, revalidate, revalidateAll }) => {
+  (props, { data: todos, revalidate }) => {
     // consume hooks or contexts
     const [state, setState] = useState();
     const store = useStore();
@@ -128,7 +127,7 @@ When the `TodoList` is toggled, the todo list data will be disposed if TodoList 
 To retain the fetched data indefinitely, the following options can be utilized:
 
 ```jsx
-const TodoList = rac(loader, { dispose: "never" });
+const TodoList = view(loader, { dispose: "never" });
 ```
 
 The `dispose` option accepts two values: `never` and `unused`:
@@ -142,35 +141,34 @@ Revalidating RAC data involves re-executing the `loader` function and performing
 
 To revalidate RAC data, you can use one of the following approaches:
 
-- Utilize the `revalidateAll` method from LoaderContext, which is the second argument of the loader function.
-- Employ the `revalidate` or `revalidateAll` methods from RenderContext, provided as the second argument of the render function.
-- Invoke the `revalidateAll` method directly on the RAC.
+- Utilize the `revalidate` method from LoaderContext, which is the second argument of the loader function.
+- Employ the `revalidate` method from RenderContext, provided as the second argument of the render function.
+- Invoke the `revalidate` method directly on the RAC.
 
 ```jsx
-// using revalidateAll method of LoaderContext
-const TodoList = rac((props, { revalidateAll }) => {
+// using revalidate method of LoaderContext
+const TodoList = view((props, { revalidate }) => {
   return (
     <>
-      <button onClick={revalidateAll} />
+      <button onClick={revalidate} />
     </>
   );
 });
 
-const TodoList = rac(
+const TodoList = view(
   (props) => todoList,
-  // using revalidate, revalidateAll methods of RenderContext
-  (props, { revalidate, revalidateAll }) => {
+  // using revalidate methods of RenderContext
+  (props, { revalidate }) => {
     return (
       <>
         <button onClick={revalidate} />
-        <button onClick={revalidateAll} />
       </>
     );
   }
 );
 
-// using static revalidateAll method of RAC
-TodoList.revalidateAll();
+// using static revalidate method of RAC
+TodoList.revalidate();
 ```
 
 ### Using RAC with external stores
@@ -180,7 +178,7 @@ RAC can integrate with external stores, utilizing their data and revalidating wh
 ```jsx
 import { store } from "./redux-store";
 
-const TodoList = rac((props, { use }) => {
+const TodoList = view((props, { use }) => {
   // When the store state is updated, the loader function will be invoked.
   const { filter } = use(store);
   const todos = await getTodosWithFilter(filter)

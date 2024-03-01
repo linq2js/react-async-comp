@@ -10,34 +10,35 @@ export type DisposeOption = "never" | "unused";
 
 export type Effect = (emit: VoidFunction) => void | VoidFunction;
 
-export type RACPropsBase = Record<string, RACPropType>;
+export type ViewPropsBase = Record<string, ViewPropType>;
 
-export type RACPropType =
+export type ViewPropType =
   | undefined
   | null
   | Date
   | string
   | number
-  | { [key: string | number]: RACPropType };
+  | { [key: string | number]: ViewPropType };
 
-export type RACOptions = {
+export type ViewOptions = {
   dispose?: DisposeOption;
 };
 
 export type LoaderContext = {
-  revalidateAll(): void;
+  revalidate(): void;
   use<T>(store: Store<T>, equal?: NoInfer<Equal<T>>): T;
   use(effect: Effect): void;
 };
 
 export type RenderContext<TData> = {
   revalidate(): void;
-  revalidateAll(): void;
   data: TData;
+  set(reducer: (prev: TData) => TData): void;
+  set(data: TData): void;
 };
 
 export type SerializableProps<TProps> = {
-  [key in keyof TProps as TProps[key] extends RACPropType
+  [key in keyof TProps as TProps[key] extends ViewPropType
     ? key
     : never]: TProps[key];
 };
@@ -47,9 +48,9 @@ export type Store<TState> = {
   subscribe(listener: VoidFunction): VoidFunction;
 };
 
-export type RAC<TProps, TData> = FunctionComponent<TProps> & {
+export type View<TProps, TData> = FunctionComponent<TProps> & {
   clear(): void;
-  revalidateAll(): void;
+  revalidate(): void;
   get(props: TProps): Promise<TData>;
   use(props: TProps): TData;
   set(

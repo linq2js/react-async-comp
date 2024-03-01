@@ -1,5 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react";
-import { rac } from "./rac";
+import { view } from "./view";
 import { StrictMode, Suspense } from "react";
 import { delay } from "./utils";
 import { clearEffects, revalidate, tag } from "./effect";
@@ -12,11 +12,11 @@ beforeEach(() => {
   clearCache();
 });
 
-describe("rac", () => {
+describe("view", () => {
   test("with render, stale: never", async () => {
     const values = [1, 2];
 
-    const RAC = rac(
+    const RAC = view(
       async () => ({ value: values.shift() }),
       (_, { data }) => {
         return <div>{data.value}</div>;
@@ -42,7 +42,7 @@ describe("rac", () => {
 
   test("with render, stale: unused", async () => {
     const values = [1, 2];
-    const RAC = rac(
+    const RAC = view(
       async () => ({ value: values.shift() }),
       (_, { data }) => {
         return <div>{data.value}</div>;
@@ -81,7 +81,7 @@ describe("rac", () => {
 
   test("with render and event handler", async () => {
     const values = [1, 2];
-    const RAC = rac(
+    const RAC = view(
       async () => ({ value: values.shift() }),
       (props: { onClick: VoidFunction }, { data }) => {
         return <div onClick={props.onClick}>{data.value}</div>;
@@ -106,13 +106,13 @@ describe("rac", () => {
 
   test("tag", () => {
     const values = [1, 2, 3, 4, 5, 6];
-    const R1 = rac((_, { use }) => {
+    const R1 = view((_, { use }) => {
       use(tag(["r1", "r"]));
 
       return <div>r1:{values.shift()}</div>;
     });
 
-    const R2 = rac((_, { use }) => {
+    const R2 = view((_, { use }) => {
       use(tag(["r2", "r"]));
 
       return <div>r2:{values.shift()}</div>;
@@ -145,7 +145,7 @@ describe("rac", () => {
   });
 
   test("update cache", () => {
-    const R1 = rac(
+    const R1 = view(
       () => 1,
       (_props, { data }) => <div>{data}</div>
     );
