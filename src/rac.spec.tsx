@@ -152,7 +152,7 @@ describe("rac", () => {
     getByText("1");
 
     act(() => {
-      R1.set(2);
+      R1.set((prev) => prev + 1);
     });
 
     getByText("2");

@@ -32,13 +32,13 @@ export const createCache = (
   const propsKey = getKey(props);
   const onReady = createListenable();
   const onCleanup = createListenable();
-  const onRevalidate = createListenable({
+  const onChange = createListenable({
     onSubscribe() {
       clearTimeout(autoDisposeTimerId);
     },
     onUnsubscribe() {
       if (disposeWhen === "unused") {
-        if (!onRevalidate.size) {
+        if (!onChange.size) {
           remove();
         }
       }
@@ -81,7 +81,8 @@ export const createCache = (
       const changed = data !== value;
       data = value;
       onReady.notifyAndClear();
-      return changed;
+      if (changed) onChange.notify();
+      return;
     }
 
     if (type === "error") {
@@ -89,11 +90,13 @@ export const createCache = (
       const changed = error !== value;
       error = value;
       onReady.notifyAndClear();
-      return changed;
+      if (changed) onChange.notify();
+      return;
     }
 
     result = value as Promise<any>;
     loading = true;
+    data = undefined;
 
     const r = result;
 
@@ -118,7 +121,7 @@ export const createCache = (
         onReady.notifyAndClear();
       });
 
-    return true;
+    onChange.notify();
   };
 
   cache = {
@@ -138,30 +141,22 @@ export const createCache = (
     dispose: remove,
     revalidateAll() {
       remove();
-      onRevalidate.notifyAndClear();
+      onChange.notifyAndClear();
     },
-    onUpdate: onRevalidate.subscribe,
+    onUpdate: onChange.subscribe,
     set(value) {
-      let changed = false;
-
       if (typeof value === "function") {
         if (loading) {
           setResult("promise", resultReady().then(value));
-        }
-        try {
-          const next = value(data);
-          if (next !== data) {
-            changed = setResult("data", next);
+        } else {
+          try {
+            setResult("data", value(data));
+          } catch (ex) {
+            setResult("error", ex);
           }
-        } catch (ex) {
-          changed = setResult("error", ex);
         }
       } else {
-        changed = setResult("data", value);
-      }
-
-      if (changed) {
-        onRevalidate.notify();
+        setResult("data", value);
       }
     },
   };
