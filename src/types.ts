@@ -1,4 +1,10 @@
-import { FunctionComponent } from "react";
+import {
+  ForwardRefExoticComponent,
+  ForwardedRef,
+  FunctionComponent,
+  PropsWithoutRef,
+  RefAttributes,
+} from "react";
 
 export type AnyFunc = (...args: any[]) => any;
 
@@ -76,7 +82,10 @@ export type Cache<TData, TProps extends {} | void = {}> = {
   set(data: DataOrRecipe<TData>, props: MaybeVoid<TProps>): void;
 };
 
-export type View<TProps extends {}, TData> = FunctionComponent<TProps> &
+export type View<TProps extends {}, TData> = ForwardRefExoticComponent<
+  PropsWithoutRef<TProps> &
+    (TProps extends { ref: ForwardedRef<infer T> } ? RefAttributes<T> : {})
+> &
   Cache<TData, TProps> & {
     /**
      * clear all view data

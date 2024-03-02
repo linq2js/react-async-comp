@@ -1,9 +1,17 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { view } from "./view";
-import { StrictMode, Suspense } from "react";
+import {
+  ForwardedRef,
+  PropsWithChildren,
+  StrictMode,
+  Suspense,
+  useRef,
+  useState,
+} from "react";
 import { delay } from "./utils";
 import { clearAllEffects, revalidate, tag } from "./effect";
 import { clearAllCache } from "./cache";
+import { AnyFunc } from "./types";
 
 const LOADING = <div>loading</div>;
 
@@ -162,5 +170,53 @@ describe("view", () => {
     });
 
     getByText("2");
+  });
+
+  test("memoize callbacks", () => {
+    const childRender = jest.fn();
+    const parentRender = jest.fn();
+    let persistCallback: AnyFunc | undefined;
+    const RAC = view(
+      () => 1,
+      (
+        props: PropsWithChildren<{
+          ref: ForwardedRef<HTMLButtonElement>;
+          callback?: VoidFunction;
+        }>
+      ) => {
+        childRender("render");
+        expect(props.ref).not.toBeUndefined();
+        persistCallback = props.callback;
+        return <></>;
+      }
+    );
+
+    const App = () => {
+      const buttonRef = useRef<HTMLButtonElement>(null);
+      const [count, setCount] = useState(1);
+      const callback = () => {
+        return count;
+      };
+      parentRender();
+
+      return (
+        <>
+          <button onClick={() => setCount(count + 1)}>click</button>
+          <RAC callback={callback} ref={buttonRef} />
+        </>
+      );
+    };
+
+    const { rerender, getByText } = render(<App />);
+
+    rerender(<App />);
+    rerender(<App />);
+    rerender(<App />);
+
+    expect(childRender).toHaveBeenCalledTimes(1);
+    expect(parentRender).toHaveBeenCalledTimes(4);
+    expect(persistCallback?.()).toBe(1);
+    fireEvent.click(getByText("click"));
+    expect(persistCallback?.()).toBe(2);
   });
 });

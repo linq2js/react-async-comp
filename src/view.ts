@@ -1,4 +1,12 @@
-import { ReactNode, memo, useCallback, useLayoutEffect, useState } from "react";
+import {
+  ReactNode,
+  createElement,
+  forwardRef,
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useState,
+} from "react";
 import {
   AnyFunc,
   LoaderContext,
@@ -28,6 +36,45 @@ export type ViewFn = {
     render: (props: TProps, context: RenderContext<TData>) => ReactNode,
     options?: ViewOptions
   ): View<TProps, TData>;
+};
+
+const createStableCallback = (callback: AnyFunc) => {
+  const result = {
+    current: callback,
+    stable(...args: any[]) {
+      return result.current(...args);
+    },
+  };
+  return result;
+};
+
+const createPropsProxy = <T extends Record<string | symbol | number, any>>(
+  props: T,
+  callbackCache: Map<
+    string | number | symbol,
+    { current: AnyFunc; stable: AnyFunc }
+  >
+) => {
+  return new Proxy(props, {
+    get(_, prop) {
+      const value = props[prop];
+      if (typeof value === "function") {
+        let cached = callbackCache.get(prop);
+        if (!cached) {
+          cached = createStableCallback(value);
+          callbackCache.set(prop, cached);
+        } else {
+          cached.current = value;
+        }
+        return cached.stable;
+      }
+
+      return value;
+    },
+    set() {
+      return false;
+    },
+  });
 };
 
 export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
@@ -64,25 +111,33 @@ export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
     return cache;
   };
 
-  const fc = (props: any): any => {
-    const cache = use(props);
+  const fc = memo(
+    forwardRef((props: any, ref): any => {
+      const cache = use(props);
 
-    if (!render) return cache.data;
+      if (!render) return cache.data;
 
-    const renderContext: RenderContext<any> = {
-      revalidate: cache.revalidate,
-      data: cache.data,
-      set: cache.set,
-    };
+      const renderContext: RenderContext<any> = {
+        revalidate: cache.revalidate,
+        data: cache.data,
+        set: cache.set,
+      };
 
-    return render(props, renderContext);
-  };
+      return render(ref ? { ...props, ref } : props, renderContext);
+    })
+  );
+
+  const wrapper = forwardRef((props, ref): any => {
+    const callbackMap = useState(() => new Map())[0];
+    const proxy = createPropsProxy({ ...props, ref }, callbackMap);
+    return createElement(fc, proxy);
+  });
 
   const load = (props: any) => {
     return tryCreate(loader, props, dispose);
   };
 
-  return Object.assign(memo(fc), {
+  return Object.assign(wrapper, {
     ...cache(loader),
     clear() {
       cache(cacheKey).clear();
