@@ -85,10 +85,6 @@ const createPropsProxy = <T extends Record<string | symbol | number, any>>(
 const isClientSide = typeof window !== "undefined";
 
 export const view: ViewFn = Object.assign((loader: AnyFunc, ...args: any[]) => {
-  if (!isClientSide) {
-    return createElement(Fragment) as any;
-  }
-
   let render: AnyFunc | undefined;
   let options: ViewOptions | undefined;
 
@@ -115,9 +111,11 @@ export const view: ViewFn = Object.assign((loader: AnyFunc, ...args: any[]) => {
     const setState = useState({})[1];
     const rerender = useCallback(() => setState({}), [setState]);
 
-    useEffect(() => {
-      return cache.onUpdate(rerender);
-    }, [cache, rerender]);
+    if (isClientSide) {
+      useEffect(() => {
+        return cache.onUpdate(rerender);
+      }, [cache, rerender]);
+    }
 
     return cache;
   };
