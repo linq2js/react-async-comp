@@ -332,7 +332,7 @@ export const cache = <TData, TProps extends {} | void = {}>(
       getCache(loader).forEach((item) => item.dispose());
     },
     load(props) {
-      return tryCreate(loader, props, "never").get();
+      return tryCreate(loader, props, "unused").get();
     },
     get(props) {
       return getCacheVariant(loader, props)?.get();
