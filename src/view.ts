@@ -85,7 +85,7 @@ const isClientSide = typeof window !== "undefined";
 
 export const view: ViewFn = Object.assign((loader: AnyFunc, ...args: any[]) => {
   if (!isClientSide) {
-    return null as any;
+    return "" as any;
   }
 
   let render: AnyFunc | undefined;
