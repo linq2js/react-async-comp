@@ -1,7 +1,6 @@
 import {
   ForwardRefExoticComponent,
   ForwardedRef,
-  FunctionComponent,
   PropsWithoutRef,
   RefAttributes,
 } from "react";
