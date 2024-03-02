@@ -1,11 +1,14 @@
-import { getKey } from "./cache";
+import { cache } from "./cache";
+import { Loader, LoaderContext } from "./types";
 
 describe("cache", () => {
-  test("nested props", () => {
-    const actual = getKey({
-      l1: { l2: { l3: 1, l4: 2, l5: 3 }, l6: 2, l7: {} },
-    });
-    const expected = `{"l1":{"l2":{"l3":1,"l4":2,"l5":3},"l6":2}}`;
-    expect(expected).toBe(actual);
+  test("cache dependency", async () => {
+    const count = () => 3;
+    const doubledCount: Loader<number> = async (_, { use }: LoaderContext) => {
+      return (await use(cache(count))) * 2;
+    };
+    expect(await cache(doubledCount).load()).toBe(6);
+    cache(count).set(2);
+    expect(await cache(doubledCount).load()).toBe(4);
   });
 });

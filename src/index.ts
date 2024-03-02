@@ -1,3 +1,3 @@
 export * from "./view";
 export * from "./effect";
-export { from } from "./cache";
+export { cache as from } from "./cache";

@@ -3,16 +3,22 @@ import { createListenable } from "./listenable";
 import {
   AnyFunc,
   DisposeOption,
-  DynamicCache,
+  Cache as CacheAPI,
   LoaderContext,
   Store,
+  Effect,
+  Equal,
+  Loader,
 } from "./types";
 import { isPlainObject, isPromiseLike } from "./utils";
 
 type Cache = {
+  readonly key: string;
   readonly data?: any;
   readonly loading: boolean;
   readonly error?: any;
+  readonly removed: boolean;
+  readonly name: string | undefined;
   dispose(): void;
   revalidate(): void;
   onReady(listener: VoidFunction): void;
@@ -21,9 +27,24 @@ type Cache = {
   set(value: any): void;
 };
 
-let allCache = new WeakMap<any, Map<string, Cache>>();
+let allCache = new WeakMap<AnyFunc, Map<string, Cache>>();
 
-export const createCache = (
+export const tryCreate = (
+  loader: AnyFunc,
+  props: any,
+  disposeWhen: DisposeOption
+) => {
+  const group = getCache(loader);
+  const key = getKey(props);
+  let item = group.get(key);
+  if (!item) {
+    item = create(loader, props, disposeWhen);
+    group.set(key, item);
+  }
+  return item;
+};
+
+export const create = (
   loader: AnyFunc,
   props: any,
   disposeWhen: DisposeOption
@@ -83,12 +104,17 @@ export const createCache = (
   };
 
   const setResult = (type: "promise" | "data" | "error", value: unknown) => {
+    clearTimeout(autoDisposeTimerId);
+
+    const isReady = !!result;
     if (type === "data") {
       result = Promise.resolve(value);
       const changed = data !== value;
       data = value;
       onReady.notifyAndClear();
-      if (changed) onChange.notify();
+      if (isReady && changed) {
+        onChange.notify();
+      }
       return;
     }
 
@@ -97,7 +123,9 @@ export const createCache = (
       const changed = error !== value;
       error = value;
       onReady.notifyAndClear();
-      if (changed) onChange.notify();
+      if (isReady && changed) {
+        onChange.notify();
+      }
       return;
     }
 
@@ -106,32 +134,40 @@ export const createCache = (
     data = undefined;
 
     const r = result;
+    const handleReady = () => {
+      clearTimeout(autoDisposeTimerId);
+      if (disposeWhen === "unused") {
+        autoDisposeTimerId = setTimeout(remove, 100);
+      }
+      onReady.notifyAndClear();
+    };
 
-    result
-      .then(
-        (resolved) => {
-          if (r !== result) return;
-          data = resolved;
-          loading = false;
-        },
-        (rejected) => {
-          if (r !== result) return;
-          error = rejected;
-          loading = false;
-        }
-      )
-      .finally(() => {
+    result.then(
+      (value) => {
         if (r !== result) return;
-        if (disposeWhen === "unused") {
-          autoDisposeTimerId = setTimeout(remove, 100);
-        }
-        onReady.notifyAndClear();
-      });
+        data = value;
+        loading = false;
+        handleReady();
+      },
+      (reason) => {
+        if (r !== result) return;
+        error = reason;
+        loading = false;
+        handleReady();
+      }
+    );
 
-    onChange.notify();
+    if (isReady) {
+      onChange.notify();
+    }
   };
 
   cache = {
+    key: propsKey,
+    name: loader.name,
+    get removed() {
+      return removed;
+    },
     get() {
       return resultReady();
     },
@@ -168,40 +204,69 @@ export const createCache = (
     },
   };
 
+  const enqueue = (effect: () => void | VoidFunction) => {
+    onReady.subscribe(() => {
+      const result = effect();
+      if (typeof result === "function") {
+        onCleanup.subscribe(result);
+      }
+    });
+  };
+
   try {
     const loaderContext: LoaderContext = {
       revalidate: cache.revalidate,
-      use(storeOrEffect: Store<any> | AnyFunc, equal: AnyFunc = Object.is) {
+      use(...args: any[]) {
         // is effect
-        if (typeof storeOrEffect === "function") {
-          const effect = storeOrEffect;
+        if (typeof args[0] === "function") {
+          const effect = args[0] as Effect;
 
-          onReady.subscribe(() => {
+          enqueue(() => {
             const emit = () => {
               cache.revalidate();
             };
-            const unsubscribe = effect(emit);
-            if (typeof unsubscribe === "function") {
-              onCleanup.subscribe(unsubscribe);
-            }
+            return effect(emit);
           });
-        } else {
+
+          return;
+        }
+
+        if (!args[0] || typeof args[0] !== "object") {
+          throw new Error(`Unsupported overload use(${args})`);
+        }
+
+        // is store
+        if ("getState" in args[0]) {
           // is store
-          const store = storeOrEffect;
+          const [store, equal = Object.is] = args as [
+            Store<any>,
+            Equal | undefined
+          ];
           let current = store.getState();
 
-          onReady.subscribe(() => {
-            onCleanup.subscribe(
-              store.subscribe(() => {
-                const next = store.getState();
-                if (equal(next, current)) return;
-                cache.revalidate();
-              })
-            );
-          });
+          enqueue(() =>
+            store.subscribe(() => {
+              const next = store.getState();
+              if (equal(next, current)) return;
+              cache.revalidate();
+            })
+          );
 
           return current;
         }
+
+        // is cache
+        const dependency = args[0] as CacheAPI<any, any>;
+        const result = dependency.load(args[1]);
+
+        enqueue(() => {
+          const variant = getCacheVariant(dependency.loader, args[1]);
+          return variant?.onUpdate(() => {
+            cache.revalidate();
+          });
+        });
+
+        return result;
       },
     };
 
@@ -219,7 +284,13 @@ export const createCache = (
   return cache;
 };
 
-export const getCacheGroup = (key: AnyFunc) => {
+const getCacheVariant = (loader: AnyFunc, props: any) => {
+  const cache = getCache(loader);
+  const variant = cache.get(getKey(props));
+  return variant;
+};
+
+const getCache = (key: AnyFunc) => {
   let items = allCache.get(key);
 
   if (!items) {
@@ -245,30 +316,29 @@ export const removeCache = (
   }
 };
 
-export const clearCache = () => {
+export const clearAllCache = () => {
   allCache = new WeakMap();
 };
 
-export const from = <TData, TProps extends {} | void = {}>(
-  loader: (payload: TProps) => TData | Promise<TData>
-): DynamicCache<TData, TProps> => {
+export const cache = <TData, TProps extends {} | void = {}>(
+  loader: Loader<TData, TProps>
+): CacheAPI<TData, TProps> => {
   return {
+    loader,
+    revalidate() {
+      getCache(loader).forEach((item) => item.revalidate());
+    },
+    clear() {
+      getCache(loader).forEach((item) => item.dispose());
+    },
     load(props) {
-      const items = getCacheGroup(loader);
-      const propsKey = getKey(props);
-      let cache = items.get(propsKey);
-      if (!cache) {
-        cache = createCache(loader, props, "never");
-        items.set(propsKey, cache);
-      }
-
-      return cache.get();
+      return tryCreate(loader, props, "never").get();
     },
     get(props) {
-      return getCacheGroup(loader).get(getKey(props))?.get();
+      return getCacheVariant(loader, props)?.get();
     },
     set(value, props) {
-      getCacheGroup(loader).get(getKey(props))?.set(value);
+      getCacheVariant(loader, props)?.set(value);
     },
   };
 };
@@ -283,7 +353,7 @@ const isNil = (value: any) => {
 
 const cachedKeys = new WeakMap<object, string>();
 
-export const getKey = (props: any = {}) => {
+const getKey = (props: any = {}) => {
   const canCache = props && typeof props === "object";
 
   if (canCache) {

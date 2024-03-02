@@ -2,14 +2,14 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { view } from "./view";
 import { StrictMode, Suspense } from "react";
 import { delay } from "./utils";
-import { clearEffects, revalidate, tag } from "./effect";
-import { clearCache } from "./cache";
+import { clearAllEffects, revalidate, tag } from "./effect";
+import { clearAllCache } from "./cache";
 
 const LOADING = <div>loading</div>;
 
 beforeEach(() => {
-  clearEffects();
-  clearCache();
+  clearAllEffects();
+  clearAllCache();
 });
 
 describe("view", () => {

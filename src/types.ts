@@ -16,6 +16,11 @@ export type SetFn<T> = {
   (data: DataOrRecipe<T>): T;
 };
 
+export type Loader<T, P extends {} | void = void> = (
+  props: P,
+  context: LoaderContext
+) => T | Promise<T>;
+
 export type ViewPropType =
   | undefined
   | null
@@ -30,8 +35,15 @@ export type ViewOptions = {
 
 export type LoaderContext = {
   revalidate(): void;
+
   use<T>(store: Store<T>, equal?: NoInfer<Equal<T>>): T;
+
   use(effect: Effect): void;
+
+  use<TData, TProps extends {} | void = {}>(
+    cache: Cache<TData, TProps>,
+    ...args: void extends MaybeVoid<TProps> ? [] : [props: TProps]
+  ): Promise<TData>;
 };
 
 export type DataOrRecipe<T> = T | ((prev: T) => T);
@@ -55,14 +67,17 @@ export type Store<TState> = {
 
 export type MaybeVoid<T> = {} extends Serializable<T> ? void : T;
 
-export type DynamicCache<TData, TProps extends {} | void = {}> = {
+export type Cache<TData, TProps extends {} | void = {}> = {
+  readonly loader: Loader<TData, TProps>;
+  revalidate(): void;
+  clear(): void;
   load(props: MaybeVoid<TProps>): Promise<TData>;
   get(props: MaybeVoid<TProps>): Promise<TData> | undefined;
   set(data: DataOrRecipe<TData>, props: MaybeVoid<TProps>): void;
 };
 
-export type View<TProps, TData> = FunctionComponent<TProps> &
-  DynamicCache<TData> & {
+export type View<TProps extends {}, TData> = FunctionComponent<TProps> &
+  Cache<TData, TProps> & {
     /**
      * clear all view data
      */

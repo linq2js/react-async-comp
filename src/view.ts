@@ -9,7 +9,7 @@ import {
   Serializable,
   Store,
 } from "./types";
-import { createCache, getCacheGroup, removeCache, getKey, from } from "./cache";
+import { cache, tryCreate } from "./cache";
 
 export type ViewFn = {
   <TProps extends ViewPropsBase = {}>(
@@ -79,25 +79,16 @@ export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
   };
 
   const load = (props: any) => {
-    const items = getCacheGroup(cacheKey);
-    const propsKey = getKey(props);
-    let cache = items.get(propsKey);
-
-    if (!cache) {
-      cache = createCache(cacheKey, props, dispose);
-      items.set(propsKey, cache);
-    }
-
-    return cache;
+    return tryCreate(loader, props, dispose);
   };
 
   return Object.assign(memo(fc), {
-    ...from(loader),
+    ...cache(loader),
     clear() {
-      removeCache(cacheKey, (item) => item.dispose());
+      cache(cacheKey).clear();
     },
     revalidate() {
-      getCacheGroup(cacheKey).forEach((item) => item.revalidate());
+      cache(cacheKey).revalidate();
     },
     use(props: any) {
       return use(props).data;

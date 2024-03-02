@@ -49,6 +49,6 @@ export const timeout = (ms: number): Effect => {
   };
 };
 
-export const clearEffects = () => {
+export const clearAllEffects = () => {
   globalEffects.clear();
 };
