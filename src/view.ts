@@ -4,7 +4,7 @@ import {
   forwardRef,
   memo,
   useCallback,
-  useLayoutEffect,
+  useEffect,
   useState,
 } from "react";
 import {
@@ -18,6 +18,8 @@ import {
   Store,
 } from "./types";
 import { cache, tryCreate } from "./cache";
+
+export type DataProviderOptions = { name?: string };
 
 export type ViewFn = {
   <TProps extends ViewPropsBase = {}>(
@@ -77,7 +79,9 @@ const createPropsProxy = <T extends Record<string | symbol | number, any>>(
   });
 };
 
-export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
+const isClientSide = typeof window !== "undefined";
+
+export const view: ViewFn = Object.assign((loader: AnyFunc, ...args: any[]) => {
   let render: AnyFunc | undefined;
   let options: ViewOptions | undefined;
 
@@ -104,9 +108,11 @@ export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
     const setState = useState({})[1];
     const rerender = useCallback(() => setState({}), [setState]);
 
-    useLayoutEffect(() => {
-      return cache.onUpdate(rerender);
-    }, [cache, rerender]);
+    if (isClientSide) {
+      useEffect(() => {
+        return cache.onUpdate(rerender);
+      }, [cache, rerender]);
+    }
 
     return cache;
   };
@@ -149,7 +155,7 @@ export const view: ViewFn = (loader: AnyFunc, ...args: any[]) => {
       return use(props).data;
     },
   });
-};
+}, {});
 
 export const select = <TState, TResult>(
   from: Store<TState>,
