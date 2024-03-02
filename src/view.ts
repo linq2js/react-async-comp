@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   ReactNode,
   createElement,
   forwardRef,
@@ -85,7 +86,7 @@ const isClientSide = typeof window !== "undefined";
 
 export const view: ViewFn = Object.assign((loader: AnyFunc, ...args: any[]) => {
   if (!isClientSide) {
-    return "" as any;
+    return createElement(Fragment) as any;
   }
 
   let render: AnyFunc | undefined;
